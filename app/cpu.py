@@ -2,20 +2,20 @@ import time
 from fastapi import APIRouter, Depends
 
 from app.redis_client import r
-from app.pricing import CPU_PRICE_PER_MIN
 from app.db import SessionLocal
 from app.wallet import debit
 from app.models import Usage
 from app.docker_client import docker_run, docker_stop
 from app.deps import get_current_user
+from app.api_key_auth import get_user_from_api_key
 from app.rate_limit import rate_limit
+from app.pricing_engine import resolve_price
 
 router = APIRouter(prefix="/cpu", tags=["CPU"])
 
-
-# =========================
+# ==================================================
 # DB DEPENDENCY
-# =========================
+# ==================================================
 def get_db():
     db = SessionLocal()
     try:
@@ -24,28 +24,21 @@ def get_db():
         db.close()
 
 
-# =========================
-# START CPU (AUTH + RATE LIMIT)
-# =========================
-@router.post("/start")
-def start_cpu(
-    user_id: int = Depends(get_current_user),
-):
-    # 🔒 rate limit: 5 starts per minute per user
+# ==================================================
+# INTERNAL START LOGIC
+# ==================================================
+def _start_cpu(user_id: int):
+    # rate limit: 5 starts / minute / user
     rate_limit(f"cpu_start:{user_id}", limit=5, window=60)
 
     key = f"cpu:{user_id}"
 
-    # already running check
     if r.hget(key, "running") == "1":
         return {"error": "CPU already running"}
 
     container_name = f"cloudpod-cpu-{user_id}"
-
-    # start docker container
     docker_run(container_name)
 
-    # store session in redis
     r.hset(
         key,
         mapping={
@@ -62,14 +55,10 @@ def start_cpu(
     }
 
 
-# =========================
-# STOP CPU (AUTH + BILLING)
-# =========================
-@router.post("/stop")
-def stop_cpu(
-    user_id: int = Depends(get_current_user),
-    db=Depends(get_db),
-):
+# ==================================================
+# INTERNAL STOP LOGIC (BILLING)
+# ==================================================
+def _stop_cpu(user_id: int, db):
     key = f"cpu:{user_id}"
     data = r.hgetall(key)
 
@@ -77,22 +66,18 @@ def stop_cpu(
         return {"error": "CPU not running"}
 
     container = data.get("container")
-
-    # stop docker container
     if container:
         docker_stop(container)
 
-    # calculate usage
     start_time = int(data.get("start", 0))
     seconds = int(time.time()) - start_time
     minutes = max(1, seconds // 60)
 
-    cost = minutes * CPU_PRICE_PER_MIN
+    # 🔥 PLAN-AWARE PRICING
+    price_per_min = resolve_price(user_id, "cpu")
+    cost = minutes * price_per_min
 
-    # debit wallet
     ok = debit(db, user_id, cost, f"CPU usage {minutes} min")
-
-    # clear redis
     r.delete(key)
 
     if not ok:
@@ -102,9 +87,7 @@ def stop_cpu(
             "cost": cost,
         }
 
-    # =========================
-    # SAVE USAGE (CPU)
-    # =========================
+    # save usage
     db.add(
         Usage(
             user_id=user_id,
@@ -120,3 +103,39 @@ def stop_cpu(
         "minutes": minutes,
         "cost": cost,
     }
+
+
+# ==================================================
+# UI AUTH ENDPOINTS
+# ==================================================
+@router.post("/start")
+def start_cpu(
+    user_id: int = Depends(get_current_user),
+):
+    return _start_cpu(user_id)
+
+
+@router.post("/stop")
+def stop_cpu(
+    user_id: int = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    return _stop_cpu(user_id, db)
+
+
+# ==================================================
+# API KEY ENDPOINTS (SDK / AUTOMATION)
+# ==================================================
+@router.post("/api/start")
+def start_cpu_api(
+    user_id: int = Depends(get_user_from_api_key),
+):
+    return _start_cpu(user_id)
+
+
+@router.post("/api/stop")
+def stop_cpu_api(
+    user_id: int = Depends(get_user_from_api_key),
+    db=Depends(get_db),
+):
+    return _stop_cpu(user_id, db)
