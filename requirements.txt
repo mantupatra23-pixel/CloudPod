@@ -1,9 +1,11 @@
 fastapi
 uvicorn
+gunicorn
+
 sqlalchemy
 psycopg2-binary
-python-jose
-passlib[bcrypt]
+
 redis
+
 python-jose
 passlib[bcrypt]
