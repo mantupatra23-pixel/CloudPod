@@ -23,6 +23,9 @@ from app.exceptions import global_exception_handler
 from fastapi import Request
 from app.logger import logger
 from app.password_reset import router as password_reset_router
+from app.api_keys import router as api_keys_router
+from app.orgs import router as orgs_router
+
 
 logger.info("CPU started for user %s", user_id)
 logger.error("Docker failed", exc_info=True)
@@ -77,6 +80,8 @@ app.include_router(auth_router)
 app.include_router(usage_router)
 app.add_exception_handler(Exception, global_exception_handler)
 app.include_router(password_reset_router)
+app.include_router(api_keys_router)
+app.include_router(orgs_router)
 
 # =========================
 # ROOT
