@@ -18,6 +18,7 @@ from app.payments import router as payment_router
 from app.admin import router as admin_router
 from app.admin_refund import router as refund_router
 from app.auth_routes import router as auth_router
+from app.usage import router as usage_router
 
 # =========================
 # BILLER
@@ -66,7 +67,7 @@ app.include_router(payment_router)
 app.include_router(admin_router)
 app.include_router(refund_router)
 app.include_router(auth_router)
-
+app.include_router(usage_router)
 
 # =========================
 # ROOT

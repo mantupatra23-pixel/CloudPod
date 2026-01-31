@@ -5,8 +5,9 @@ from app.redis_client import r
 from app.pricing import CPU_PRICE_PER_MIN
 from app.db import SessionLocal
 from app.wallet import debit
+from app.models import Usage
 from app.docker_client import docker_run, docker_stop
-from app.deps import get_current_user   # ✅ AUTH DEPENDENCY
+from app.deps import get_current_user
 
 router = APIRouter(prefix="/cpu", tags=["CPU"])
 
@@ -27,7 +28,7 @@ def get_db():
 # =========================
 @router.post("/start")
 def start_cpu(
-    user_id: int = Depends(get_current_user)
+    user_id: int = Depends(get_current_user),
 ):
     key = f"cpu:{user_id}"
 
@@ -47,7 +48,7 @@ def start_cpu(
             "start": int(time.time()),
             "running": 1,
             "container": container_name,
-        }
+        },
     )
 
     return {
@@ -63,7 +64,7 @@ def start_cpu(
 @router.post("/stop")
 def stop_cpu(
     user_id: int = Depends(get_current_user),
-    db=Depends(get_db)
+    db=Depends(get_db),
 ):
     key = f"cpu:{user_id}"
     data = r.hgetall(key)
@@ -96,6 +97,19 @@ def stop_cpu(
             "minutes": minutes,
             "cost": cost,
         }
+
+    # =========================
+    # SAVE USAGE (✅ THIS PART YOU ASKED)
+    # =========================
+    db.add(
+        Usage(
+            user_id=user_id,
+            resource="cpu",
+            minutes=minutes,
+            cost=cost,
+        )
+    )
+    db.commit()
 
     return {
         "status": "CPU stopped",
