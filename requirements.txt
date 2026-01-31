@@ -9,3 +9,5 @@ redis
 
 python-jose
 passlib[bcrypt]
+
+stripe
