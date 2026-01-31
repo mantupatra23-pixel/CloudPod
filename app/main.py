@@ -19,6 +19,13 @@ from app.admin import router as admin_router
 from app.admin_refund import router as refund_router
 from app.auth_routes import router as auth_router
 from app.usage import router as usage_router
+from app.exceptions import global_exception_handler
+from fastapi import Request
+from app.logger import logger
+from app.password_reset import router as password_reset_router
+
+logger.info("CPU started for user %s", user_id)
+logger.error("Docker failed", exc_info=True)
 
 # =========================
 # BILLER
@@ -68,6 +75,8 @@ app.include_router(admin_router)
 app.include_router(refund_router)
 app.include_router(auth_router)
 app.include_router(usage_router)
+app.add_exception_handler(Exception, global_exception_handler)
+app.include_router(password_reset_router)
 
 # =========================
 # ROOT

@@ -8,6 +8,7 @@ from app.wallet import debit
 from app.models import Usage
 from app.docker_client import docker_run, docker_stop
 from app.deps import get_current_user
+from app.rate_limit import rate_limit
 
 router = APIRouter(prefix="/cpu", tags=["CPU"])
 
@@ -24,12 +25,15 @@ def get_db():
 
 
 # =========================
-# START CPU (AUTH + DOCKER)
+# START CPU (AUTH + RATE LIMIT)
 # =========================
 @router.post("/start")
 def start_cpu(
     user_id: int = Depends(get_current_user),
 ):
+    # 🔒 rate limit: 5 starts per minute per user
+    rate_limit(f"cpu_start:{user_id}", limit=5, window=60)
+
     key = f"cpu:{user_id}"
 
     # already running check
@@ -59,7 +63,7 @@ def start_cpu(
 
 
 # =========================
-# STOP CPU (AUTH + DOCKER)
+# STOP CPU (AUTH + BILLING)
 # =========================
 @router.post("/stop")
 def stop_cpu(
@@ -99,7 +103,7 @@ def stop_cpu(
         }
 
     # =========================
-    # SAVE USAGE (✅ THIS PART YOU ASKED)
+    # SAVE USAGE (CPU)
     # =========================
     db.add(
         Usage(
